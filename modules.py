@@ -85,10 +85,10 @@ class Encoder(nn.Module):
         self.proj = nn.Linear(filter_channels, filter_channels)
         self.fc = nn.Linear(filter_channels * 2, filter_channels * 2)
 
-    def forward(self, x, s_emb, mask):
+    def forward(self, x, s_emb):
         x = self.embedding(x)
         pre = F.relu(self.pre(x))
-        x = self.conv_layer(pre, mask)
+        x = self.conv_layer(pre)
         proj = self.proj(x)
         s_emb = self.pre_sp(s_emb)
         x_sp = torch.cat([proj, s_emb.unsqueeze(1).expand(-1, 379, -1)], dim=-1)
@@ -111,4 +111,4 @@ class Decoder(nn.Module):
         z = self.drop(z)
         #z = F.relu(self.fc(z))
         z = self.proj(z)
-        return z
+        return z.squeeze(-1)

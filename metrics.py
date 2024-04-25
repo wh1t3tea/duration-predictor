@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 
-def сoncordance_сс(y_true, y_pred, mask):
+def сoncordance_cc(y_true, y_pred, mask):
     ccc_metric = 0
     for i in range(y_true.shape[0]):
         mask_ = torch.sum(mask[i], dim=-1)

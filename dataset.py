@@ -1,16 +1,30 @@
+import os
 from copy import deepcopy
 
+import pandas as pd
 import torch
 from torch import nn
 
 
 class PhoneDataset(nn.Module):
-    def __init__(self, data, voc_dict):
+    def __init__(self, root_dir):
         super().__init__()
-        self.data = data
+        self.vocab = None
+        self.data = self.load_data(root_dir)
         self.pad_idx = [self.data[0]["pad_idx"]]
         self.length = self.max_len()
-        self.voc_ = voc_dict
+
+    def load_data(self, root_dir):
+        data = sum([pd.read_pickle(filename) for filename in os.listdir(root_dir)])
+        vocab = [data[x]["tokenized_phones"] for x in range(len(data))]
+        voc = []
+        for sample in vocab:
+            for token in sample:
+                voc.append(token)
+        voc = set(voc)
+        voc.add(29)
+        self.vocab = list(voc)
+        return data
 
     def __len__(self):
         return len(self.data)

@@ -22,7 +22,7 @@ class DurationPredictor(nn.Module):
         self.decoder = Decoder(hidden_dim // 2,
                                filter_channels)
 
-    def forward(self, x, y, mask):
-        x = self.encoder(x, y, mask)
+    def forward(self, x, y):
+        x = self.encoder(x, y)
         generated = self.decoder(x)
         return generated
