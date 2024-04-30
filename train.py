@@ -1,16 +1,15 @@
 import torch
-
 from model import DurationPredictor
 from dataset import PhoneDataset
-from metrics import masked_mae, сoncordance_cc
+from metrics import masked_mae, concordance_cc as concordance_cc_metric
 from loss import masked_mse_loss
-from torch import nn
 from torch import optim
 from torch.optim import lr_scheduler
 import argparse
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from logs import setup_train_logging
+from metrics import ThresholdMaskedMAE
 
 
 def train(arg):
@@ -55,32 +54,38 @@ def train(arg):
         scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer,
                                                              T_0=arg.step_decay,
                                                              eta_min=1e-5)
-    concordance_cc = сoncordance_cc
+    concordance_cc = concordance_cc_metric
     mae = masked_mae
+    weighted_mae = ThresholdMaskedMAE(arg.threshold_dict)
 
-    metrics = {"train":
-        {
-            "mae": [],
-            "ccc": []
-        },
+    metrics = {
+        "train":
+            {
+                "mae": [],
+                "ccc": [],
+                "weighted_mae": []
+            },
         "validation":
             {
                 "mae": [],
-                "ccc": []
+                "ccc": [],
+                "weighted_mae": []
             }
     }
-    loss = {"train": [],
-            "validation": []}
+    loss = {
+        "train": [],
+        "validation": []
+    }
 
     logger.log("Training starts:")
 
     for epoch in range(arg.max_epochs):
-        epoch_loss = epoch_mae = epoch_ccc = 0
+        epoch_loss = epoch_mae = epoch_ccc = epoch_weighted_mae = 0
         stage = "train"
         model.train()
         for batch in train_loader:
-            tokens, lengths, mask, sp_e = batch["tokens"], batch["lenghts"], batch["mask"], batch["sp_embd"]
-            tokens, lengths, mask, sp_e = tokens.to(device), lengths.to(device), mask.to(device), sp_e.to("cuda")
+            tokens, lengths, mask, sp_e = batch["tokens"], batch["lenghts"], batch["mask"], batch["sp_e"]
+            tokens, lengths, mask, sp_e = tokens.to(device), lengths.to(device), mask.to(device), sp_e.to(device)
 
             optimizer.zero_grad()
             predicted_durations = model(tokens, sp_e)
@@ -96,25 +101,28 @@ def train(arg):
 
             epoch_mae += mae(*results)
             epoch_ccc += concordance_cc(*results)
+            epoch_weighted_mae += weighted_mae(*results)
 
         scheduler.step()
 
         loss["train"].append(epoch_loss.mean())
         metrics["train"]["mae"].append(epoch_mae.mean())
         metrics["train"]["ccc"].append(epoch_ccc.mean())
+        metrics["train"]["weighted_mae"].append(epoch_weighted_mae.mean())
 
         logger.log(
-            f"Epoch: {epoch+1} | Stage: {stage} | loss: {loss[stage][-1]} | mae: {metrics[stage]['mae'][-1]} | concordance_cc: {metrics[stage]['ccc'][-1]}")
+            f"Epoch: {epoch + 1} | Stage: {stage} | loss: {loss[stage][-1]} | mae: {metrics[stage]['mae'][-1]} | "
+            f"concordance_cc: {metrics[stage]['ccc'][-1]}, weighted_mae: {metrics[stage]['weighted_mae'][-1]}")
 
-        epoch_loss = epoch_mae = epoch_ccc = 0
+        epoch_loss = epoch_mae = epoch_ccc = epoch_weighted_mae = 0
 
         stage = "validation"
 
         model.eval()
         with torch.inference_mode():
-            for batch in train_loader:
-                tokens, lengths, mask, sp_e = batch["tokens"], batch["lenghts"], batch["mask"], batch["sp_embd"]
-                tokens, lengths, mask, sp_e = tokens.to(device), lengths.to(device), mask.to(device), sp_e.to("cuda")
+            for batch in val_loader:
+                tokens, lengths, mask, sp_e = batch["tokens"], batch["lenghts"], batch["mask"], batch["sp_e"]
+                tokens, lengths, mask, sp_e = tokens.to(device), lengths.to(device), mask.to(device), sp_e.to(device)
                 predicted_durations = model(tokens, sp_e)
                 lengths = lengths.float()
                 results = [lengths, predicted_durations, mask]
@@ -124,15 +132,16 @@ def train(arg):
 
                 epoch_mae += mae(*results)
                 epoch_ccc += concordance_cc(*results)
+                epoch_weighted_mae += weighted_mae(*results)
 
         loss[stage].append(epoch_loss.mean())
         metrics[stage]["mae"].append(epoch_mae.mean())
         metrics[stage]["ccc"].append(epoch_ccc.mean())
+        metrics[stage]["weighted_mae"].append(epoch_weighted_mae.mean())
 
         logger.log(
-            f"Epoch: {epoch + 1} | Stage: {stage} | loss: {loss[stage][-1]} | mae: {metrics[stage]['mae'][-1]} | concordance_cc: {metrics[stage]['ccc'][-1]}")
-
-    logger.log("Training ends.")
+            f"Epoch: {epoch + 1} | Stage: {stage} | loss: {loss[stage][-1]} | mae: {metrics[stage]['mae'][-1]} | "
+            f"concordance_cc: {metrics[stage]['ccc'][-1]}, weighted_mae: {metrics[stage]['weighted_mae'][-1]}")
 
 
 if __name__ == "__main__":

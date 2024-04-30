@@ -45,4 +45,4 @@ class PhoneDataset(nn.Module):
         return {"tokens": torch.tensor(tokens).int(),
                 "mask": torch.tensor(dur_mask),
                 "lengths": torch.tensor(durs).int(),
-                "sp_embd": speaker_embed}
+                "sp_e": speaker_embed}

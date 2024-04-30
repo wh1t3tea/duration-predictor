@@ -1,8 +1,7 @@
 import torch
-from torch import nn
 
 
-def сoncordance_cc(y_true, y_pred, mask):
+def concordance_cc(y_true, y_pred, mask):
     ccc_metric = 0
     for i in range(y_true.shape[0]):
         mask_ = torch.sum(mask[i], dim=-1)
@@ -27,3 +26,19 @@ def masked_mae(y_true, y_pred, mask):
     non_padding_count = torch.sum(mask, dim=-1)
     mae = masked_mae_sum / non_padding_count
     return torch.mean(mae)
+
+
+class ThresholdMaskedMAE:
+    def __init__(self, thresholds):
+        self.thresholds = thresholds
+        self.idx2weight = sorted([value for value in thresholds.values()], reverse=True)
+
+    def mask_thresholds(self, sequence):
+        masks = [torch.sum(sequence[sequence <= thresh]) for thresh, value in self.thresholds.items()]
+        return masks
+
+    def __call__(self, y_true, y_pred, mask):
+        masked_mae_sum = torch.sum(torch.abs(y_pred - y_true) * mask, dim=-1)
+        masks = self.mask_thresholds(masked_mae_sum)
+        metric = sum([(masks[idx] - masks[idx - 1]) * self.idx2weight[idx] for idx in range(len(masks))])
+        return torch.tensor(metric, dtype=torch.float32) / y_true.shape[0]
