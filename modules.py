@@ -24,37 +24,36 @@ class ConvBlock(nn.Module):
 
         self.conv_layer = nn.ModuleList()
         self.filter_size = filter_ch
-
         for i in range(layers):
             i = i % 3
             dilation = kernel_s ** i
             padding = (kernel_s * dilation - dilation) // 2
             block = nn.Sequential(
                 Flip(),
-                nn.Conv1d(in_channels=filter_ch,
-                          out_channels=filter_ch,
-                          kernel_size=kernel_s,
+                nn.Conv1d(filter_ch,
+                          filter_ch,
+                          kernel_s,
                           padding=padding,
                           dilation=dilation,
                           groups=filter_ch),
                 Flip(),
                 nn.LayerNorm(filter_ch),
-                nn.ReLU(),
+                nn.GELU(),
                 Flip(),
                 nn.Conv1d(filter_ch,
                           filter_ch,
                           1),
                 Flip(),
                 nn.LayerNorm(filter_ch),
-                nn.ReLU())
+                nn.GELU())
             self.conv_layer.append(block)
         self.drop = nn.Dropout(0.5)
 
-    def forward(self, x):
+    def forward(self, x, x_mask):
         for i in range(len(self.conv_layer)):
             y = self.conv_layer[i](x)
-            x = x + y
             x = self.drop(x)
+            x = x + y
         return x
 
 
@@ -80,30 +79,30 @@ class Encoder(nn.Module):
         self.proj = nn.Linear(filter_channels, filter_channels)
         self.fc = nn.Linear(filter_channels * 2, filter_channels * 2)
 
-    def forward(self, x, s_emb):
+    def forward(self, x, s_emb, mask):
         x = self.embedding(x)
         pre = F.relu(self.pre(x))
-        x = self.conv_layer(pre)
+        x = self.conv_layer(pre, mask)
         proj = self.proj(x)
         s_emb = self.pre_sp(s_emb)
-        x_sp = torch.cat([proj, s_emb.unsqueeze(1).expand(-1, 379, -1)], dim=-1)
+        x_sp = torch.cat([proj, s_emb.unsqueeze(1).expand(-1, 383, -1)], dim=-1)
         x_sp = F.relu(self.fc(x_sp))
         return x_sp
 
 
 class Decoder(nn.Module):
-    def __init__(self,
-                 hidden_dim,
-                 filter_channels):
-        super().__init__()
-        self.pre = nn.Linear(hidden_dim * 4, filter_channels)
-        self.fc = nn.Linear(filter_channels, filter_channels)
-        self.proj = nn.Linear(filter_channels, 1)
-        self.drop = nn.Dropout(0.5)
-
-    def forward(self, z):
-        z = F.relu(self.pre(z))
-        z = self.drop(z)
-        #z = F.relu(self.fc(z))
-        z = self.proj(z)
-        return z.squeeze(-1)
+  def __init__(self,
+               hidden_dim,
+               filter_channels,
+               n_convs):
+    super().__init__()
+    self.pre = nn.Linear(hidden_dim * 4, filter_channels)
+    self.fc = nn.Linear(filter_channels, filter_channels)
+    self.proj = nn.Linear(filter_channels, 1)
+    self.drop = nn.Dropout(0.5)
+  def forward(self, z):
+    z = F.relu(self.pre(z))
+    z = self.drop(z)
+    #z = F.relu(self.fc(z))
+    z = self.proj(z)
+    return z

@@ -29,16 +29,29 @@ def masked_mae(y_true, y_pred, mask):
 
 
 class ThresholdMaskedMAE:
-    def __init__(self, thresholds):
+    def __init__(self, thresholds, mode="hard"):
+        self.mode = mode
         self.thresholds = thresholds
-        self.idx2weight = sorted([value for value in thresholds.values()], reverse=True)
+        if thresholds is not None:
+            self.idx2weight = sorted([value for value in thresholds.values()], reverse=True)
 
-    def mask_thresholds(self, sequence):
-        masks = [torch.sum(sequence[sequence <= thresh]) for thresh, value in self.thresholds.items()]
+    def mask_thresholds(self, sequence,):
+        masks = []
+        for thresh in self.thresholds.keys():
+            mask = torch.where(sequence <= thresh, torch.tensor(1), torch.tensor(0))
+            if len(masks) == 0:
+                masks.append(torch.sum(mask))
+            else:
+                masks.append(torch.sum(mask) - sum(masks))
         return masks
 
     def __call__(self, y_true, y_pred, mask):
-        masked_mae_sum = torch.sum(torch.abs(y_pred - y_true) * mask, dim=-1)
-        masks = self.mask_thresholds(masked_mae_sum)
-        metric = sum([(masks[idx] - masks[idx - 1]) * self.idx2weight[idx] for idx in range(len(masks))])
+        masked_mae = torch.abs(y_pred - y_true) * mask
+        if self.mode == "hard":
+            weighted_m = masked_mae.pow(-1)
+            metric = torch.where(weighted_m >= 1, 1, weighted_m)
+            metric = torch.sum(metric) / mask.shape[-1]
+            return metric / y_true.shape[0]
+        masks = self.mask_thresholds(masked_mae)
+        metric = torch.sum(torch.tensor([masks[idx] * self.idx2weight[idx] for idx in range(len(masks))]), dim=-1) / mask.shape[-1]
         return torch.tensor(metric, dtype=torch.float32) / y_true.shape[0]
