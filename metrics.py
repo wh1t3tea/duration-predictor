@@ -1,5 +1,4 @@
 import torch
-from torch import nn
 
 
 def сoncordance_cc(y_true, y_pred, mask):

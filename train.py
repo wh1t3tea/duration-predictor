@@ -79,6 +79,7 @@ def train(arg):
         stage = "train"
         model.train()
         for batch in train_loader:
+            optimizer.zero_grad()
             tokens, lengths, mask, sp_e = batch["tokens"], batch["lenghts"], batch["mask"], batch["sp_embd"]
             tokens, lengths, mask, sp_e = tokens.to(device), lengths.to(device), mask.to(device), sp_e.to("cuda")
 
@@ -86,13 +87,14 @@ def train(arg):
             predicted_durations = model(tokens, sp_e)
             lengths = lengths.float()
 
-            results = [lengths, predicted_durations, mask]
+            results = [torch.log1p(lengths), predicted_durations, mask]
 
             train_loss = loss_fn(*results)
             train_loss.backward()
+            optimizer.step()
             epoch_loss += train_loss.detach()
 
-            optimizer.step()
+
 
             epoch_mae += mae(*results)
             epoch_ccc += concordance_cc(*results)
@@ -112,12 +114,12 @@ def train(arg):
 
         model.eval()
         with torch.inference_mode():
-            for batch in train_loader:
+            for batch in val_loader:
                 tokens, lengths, mask, sp_e = batch["tokens"], batch["lenghts"], batch["mask"], batch["sp_embd"]
                 tokens, lengths, mask, sp_e = tokens.to(device), lengths.to(device), mask.to(device), sp_e.to("cuda")
                 predicted_durations = model(tokens, sp_e)
                 lengths = lengths.float()
-                results = [lengths, predicted_durations, mask]
+                results = [torch.log1p(lengths), predicted_durations, mask]
 
                 train_loss = loss_fn(*results)
                 epoch_loss += train_loss
